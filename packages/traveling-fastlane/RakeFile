@@ -11,6 +11,7 @@ UNF_VERSION = '0.0.6'
 SCRIPTS = [
   'fetch_cert',
   'fetch_push_cert',
+  'fetch_push_key',
   'fetch_new_provisioning_profile',
   'app_management',
   'validate_apple_credentials',
@@ -138,10 +139,10 @@ def create_package target
 
   if target == "osx"
     sh "cp -R #{PACKAGE_NAME}-#{VERSION}-osx publishing/darwin"
-    sh "cd publishing/darwin; npm publish --access=public; rm -rf #{PACKAGE_NAME}-#{VERSION}-osx"
+    # sh "cd publishing/darwin; npm publish --access=public; rm -rf #{PACKAGE_NAME}-#{VERSION}-osx"
   else
     sh "cp -R #{PACKAGE_NAME}-#{VERSION}-linux-x86_64 publishing/linux"
-    sh "cd publishing/linux; npm publish --access=public; rm -rf #{PACKAGE_NAME}-#{VERSION}-linux-x86_64"
+    # sh "cd publishing/linux; npm publish --access=public; rm -rf #{PACKAGE_NAME}-#{VERSION}-linux-x86_64"
   end
 end
 
