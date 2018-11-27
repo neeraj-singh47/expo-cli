@@ -1011,7 +1011,7 @@ async function buildShellAppAsync(context: StandaloneContext) {
       await fs.remove(`shell-unaligned.apk`);
       await fs.remove(`shell.apk`);
     } catch (e) {}
-    const gradleArgs = [`assembleProdMinSdkProdKernelRelease`];
+    const gradleArgs = [`assembleProdKernelRelease`];
     if (process.env.GRADLE_DAEMON_DISABLED) {
       gradleArgs.unshift('--no-daemon');
     }
@@ -1027,9 +1027,9 @@ async function buildShellAppAsync(context: StandaloneContext) {
         'build',
         'outputs',
         'apk',
-        'prodMinSdkProdKernel',
+        'prodKernel',
         'release',
-        'app-prodMinSdk-prodKernel-release-unsigned.apk'
+        'app-prodKernel-release-unsigned.apk'
       ),
       `shell-unaligned.apk`
     );
