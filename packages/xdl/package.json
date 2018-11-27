@@ -1,6 +1,6 @@
 {
   "name": "xdl",
-  "version": "51.6.1",
+  "version": "51.6.2-alpha.0+cd2df99",
   "description": "The Expo Development Library",
   "main": "build/xdl.js",
   "files": [
@@ -132,5 +132,5 @@
     "promise-print": "^2.3.0",
     "rimraf": "^2.5.4"
   },
-  "gitHead": "58a1704c720ba35613d6cb6048a1f3d9abba550d"
+  "gitHead": "cd2df993dd46a2ab054f6674b332ad66fb2ab43e"
 }
