@@ -398,38 +398,40 @@ export async function runShellAppModificationsAsync(
   await fs.remove(path.join(shellPath, 'app', 'src', 'test'));
   await fs.remove(path.join(shellPath, 'app', 'src', 'androidTest'));
 
-  let appBuildGradle = path.join(shellPath, 'app', 'build.gradle');
-  await regexFileAsync(/\/\* UNCOMMENT WHEN DISTRIBUTING/g, '', appBuildGradle);
-  await regexFileAsync(/END UNCOMMENT WHEN DISTRIBUTING \*\//g, '', appBuildGradle);
-  await deleteLinesInFileAsync(
-    'WHEN_DISTRIBUTING_REMOVE_FROM_HERE',
-    'WHEN_DISTRIBUTING_REMOVE_TO_HERE',
-    appBuildGradle
-  );
+  if (isDetached) {
+    let appBuildGradle = path.join(shellPath, 'app', 'build.gradle');
+    await regexFileAsync(/\/\* UNCOMMENT WHEN DISTRIBUTING/g, '', appBuildGradle);
+    await regexFileAsync(/END UNCOMMENT WHEN DISTRIBUTING \*\//g, '', appBuildGradle);
+    await deleteLinesInFileAsync(
+      'WHEN_DISTRIBUTING_REMOVE_FROM_HERE',
+      'WHEN_DISTRIBUTING_REMOVE_TO_HERE',
+      appBuildGradle
+    );
 
-  // Don't need to compile expoview or ReactAndroid
-  // react-native link looks for a \n so we need that. See https://github.com/facebook/react-native/blob/master/local-cli/link/android/patches/makeSettingsPatch.js
-  await fs.writeFile(path.join(shellPath, 'settings.gradle'), `include ':app'\n`);
+    // Don't need to compile expoview or ReactAndroid
+    // react-native link looks for a \n so we need that. See https://github.com/facebook/react-native/blob/master/local-cli/link/android/patches/makeSettingsPatch.js
+    await fs.writeFile(path.join(shellPath, 'settings.gradle'), `include ':app'\n`);
 
-  await regexFileAsync(
-    'TEMPLATE_INITIAL_URL',
-    url,
-    path.join(
-      shellPath,
-      'app',
-      'src',
-      'main',
-      'java',
-      'host',
-      'exp',
-      'exponent',
-      'MainActivity.java'
-    )
-  );
+    await regexFileAsync(
+      'TEMPLATE_INITIAL_URL',
+      url,
+      path.join(
+        shellPath,
+        'app',
+        'src',
+        'main',
+        'java',
+        'host',
+        'exp',
+        'exponent',
+        'MainActivity.java'
+      )
+    );
 
-  const runShPath = path.join(shellPath, 'run.sh');
-  await regexFileAsync('host.exp.exponent/', `${javaPackage}/`, runShPath);
-  await regexFileAsync('LauncherActivity', 'MainActivity', runShPath);
+    const runShPath = path.join(shellPath, 'run.sh');
+    await regexFileAsync('host.exp.exponent/', `${javaPackage}/`, runShPath);
+    await regexFileAsync('LauncherActivity', 'MainActivity', runShPath);
+  }
 
   // Package
   await regexFileAsync(
@@ -475,7 +477,6 @@ export async function runShellAppModificationsAsync(
   );
 
   // Remove Exponent build script
-  // TODO: Should we also remove this?
   if (!isDetached) {
     await regexFileAsync(
       `preBuild.dependsOn generateDynamicMacros`,
@@ -498,11 +499,19 @@ export async function runShellAppModificationsAsync(
     path.join(shellPath, 'app', 'google-services.json')
   ); // TODO: actually use the correct file
 
+  // TODO: probably don't need this in both places
   await regexFileAsync(
     /host\.exp\.exponent\.permission\.C2D_MESSAGE/g,
     `${javaPackage}.permission.C2D_MESSAGE`,
     path.join(shellPath, 'app', 'src', 'main', 'AndroidManifest.xml')
   );
+  if (!isDetached) {
+    await regexFileAsync(
+      /host\.exp\.exponent\.permission\.C2D_MESSAGE/g,
+      `${javaPackage}.permission.C2D_MESSAGE`,
+      path.join(shellPath, 'expoview', 'src', 'main', 'AndroidManifest.xml')
+    );
+  }
 
   // Set INITIAL_URL, SHELL_APP_SCHEME and SHOW_LOADING_VIEW
   await regexFileAsync(
@@ -557,22 +566,24 @@ export async function runShellAppModificationsAsync(
       )
     );
   }
-  await regexFileAsync(
-    'IS_DETACHED = false',
-    `IS_DETACHED = true`,
-    path.join(
-      shellPath,
-      'app',
-      'src',
-      'main',
-      'java',
-      'host',
-      'exp',
-      'exponent',
-      'generated',
-      'AppConstants.java'
-    )
-  );
+  if (isDetached) {
+    await regexFileAsync(
+      'IS_DETACHED = false',
+      `IS_DETACHED = true`,
+      path.join(
+        shellPath,
+        'app',
+        'src',
+        'main',
+        'java',
+        'host',
+        'exp',
+        'exponent',
+        'generated',
+        'AppConstants.java'
+      )
+    );
+  }
   if (updatesDisabled) {
     await regexFileAsync(
       'ARE_REMOTE_UPDATES_ENABLED = true',
@@ -645,31 +656,55 @@ export async function runShellAppModificationsAsync(
     path.join(shellPath, 'app', 'src', 'main', 'AndroidManifest.xml')
   );
 
-  // Add LAUNCHER category to MainActivity
-  await regexFileAsync(
-    '<!-- ADD DETACH INTENT FILTERS HERE -->',
-    `<intent-filter>
-      <action android:name="android.intent.action.MAIN"/>
-
-      <category android:name="android.intent.category.LAUNCHER"/>
-    </intent-filter>`,
-    path.join(shellPath, 'app', 'src', 'main', 'AndroidManifest.xml')
-  );
-
-  // Add app-specific intent filters
-  const intentFilters = _.get(manifest, 'android.intentFilters');
-  if (intentFilters) {
+  if (isDetached) {
+    // Add LAUNCHER category to MainActivity
     await regexFileAsync(
-      '<!-- ADD DETACH APP SPECIFIC INTENT FILTERS -->',
-      renderIntentFilters(intentFilters).join('\n'),
+      '<!-- ADD DETACH INTENT FILTERS HERE -->',
+      `<intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>`,
+      path.join(shellPath, 'app', 'src', 'main', 'AndroidManifest.xml')
+    );
+  } else {
+    // Add LAUNCHER category to ShellAppActivity
+    await regexFileAsync(
+      '<!-- ADD SHELL INTENT FILTERS HERE -->',
+      `<intent-filter>
+        <action android:name="android.intent.action.MAIN"/>
+
+        <category android:name="android.intent.category.LAUNCHER"/>
+      </intent-filter>`,
       path.join(shellPath, 'app', 'src', 'main', 'AndroidManifest.xml')
     );
   }
 
+  // Add app-specific intent filters
+  const intentFilters = _.get(manifest, 'android.intentFilters');
+  if (intentFilters) {
+    if (isDetached) {
+      await regexFileAsync(
+        '<!-- ADD DETACH APP SPECIFIC INTENT FILTERS -->',
+        renderIntentFilters(intentFilters).join('\n'),
+        path.join(shellPath, 'app', 'src', 'main', 'AndroidManifest.xml')
+      );
+    } else {
+      await regexFileAsync(
+        '<!-- ADD SHELL APP SPECIFIC INTENT FILTERS -->',
+        renderIntentFilters(intentFilters).join('\n'),
+        path.join(shellPath, 'app', 'src', 'main', 'AndroidManifest.xml')
+      );
+    }
+  }
+
   // Add shell app scheme
   if (scheme) {
+    const searchLine = isDetached
+      ? '<!-- ADD DETACH SCHEME HERE -->'
+      : '<!-- ADD SHELL SCHEME HERE -->';
     await regexFileAsync(
-      '<!-- ADD DETACH SCHEME HERE -->',
+      searchLine,
       `<intent-filter>
         <data android:scheme="${scheme}"/>
 
