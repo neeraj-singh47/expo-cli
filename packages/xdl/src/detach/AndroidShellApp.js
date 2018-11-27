@@ -51,6 +51,9 @@ function xmlWeirdAndroidEscape(original) {
   return replaceString(noApos, "'", "\\'");
 }
 
+const areShellAndEjectedAppsUnified = (sdkVersion: ?string) =>
+  sdkVersion ? parseSdkMajorVersion(sdkVersion) >= 31 : false;
+
 exports.updateAndroidShellAppAsync = async function updateAndroidShellAppAsync(args: any) {
   let { url, sdkVersion, releaseChannel, workingDir } = args;
 
@@ -331,9 +334,9 @@ exports.createAndroidShellAppAsync = async function createAndroidShellAppAsync(a
     releaseChannel
   );
 
-  await copyInitialShellAppFilesAsync(androidSrcPath, shellPath);
+  await copyInitialShellAppFilesAsync(androidSrcPath, shellPath, false);
   await removeObsoleteSdks(shellPath, sdkVersion);
-  await runShellAppModificationsAsync(context);
+  await runShellAppModificationsAsync(context, false, sdkVersion);
 
   if (!args.skipBuild) {
     await buildShellAppAsync(context);
@@ -355,7 +358,8 @@ function shellPathForContext(context: StandaloneContext) {
 
 export async function runShellAppModificationsAsync(
   context: StandaloneContext,
-  isDetached: boolean = false
+  isDetached: boolean = false,
+  sdkVersion: ?string
 ) {
   const fnLogger = logger.withFields({ buildPhase: 'running shell app modifications' });
 
@@ -363,6 +367,8 @@ export async function runShellAppModificationsAsync(
   let url: string = context.published.url;
   let manifest = context.config; // manifest or app.json
   let releaseChannel = context.published.releaseChannel;
+  // In SDK32 we've unified build process for shell and ejected apps
+  const shellAndEjectedAppsAreUnified = areShellAndEjectedAppsUnified(sdkVersion);
 
   if (!context.data.privateConfig) {
     fnLogger.warn('Warning: No config file specified.');
@@ -398,7 +404,7 @@ export async function runShellAppModificationsAsync(
   await fs.remove(path.join(shellPath, 'app', 'src', 'test'));
   await fs.remove(path.join(shellPath, 'app', 'src', 'androidTest'));
 
-  if (isDetached) {
+  if (isDetached || shellAndEjectedAppsAreUnified) {
     let appBuildGradle = path.join(shellPath, 'app', 'build.gradle');
     await regexFileAsync(/\/\* UNCOMMENT WHEN DISTRIBUTING/g, '', appBuildGradle);
     await regexFileAsync(/END UNCOMMENT WHEN DISTRIBUTING \*\//g, '', appBuildGradle);
@@ -428,9 +434,13 @@ export async function runShellAppModificationsAsync(
       )
     );
 
-    const runShPath = path.join(shellPath, 'run.sh');
-    await regexFileAsync('host.exp.exponent/', `${javaPackage}/`, runShPath);
-    await regexFileAsync('LauncherActivity', 'MainActivity', runShPath);
+    try {
+      const runShPath = path.join(shellPath, 'run.sh');
+      await regexFileAsync('host.exp.exponent/', `${javaPackage}/`, runShPath);
+      await regexFileAsync('LauncherActivity', 'MainActivity', runShPath);
+    } catch (error) {
+      // run.sh has been removed
+    }
   }
 
   // Package
@@ -477,7 +487,7 @@ export async function runShellAppModificationsAsync(
   );
 
   // Remove Exponent build script
-  if (!isDetached) {
+  if (!isDetached && !shellAndEjectedAppsAreUnified) {
     await regexFileAsync(
       `preBuild.dependsOn generateDynamicMacros`,
       ``,
@@ -505,7 +515,7 @@ export async function runShellAppModificationsAsync(
     `${javaPackage}.permission.C2D_MESSAGE`,
     path.join(shellPath, 'app', 'src', 'main', 'AndroidManifest.xml')
   );
-  if (!isDetached) {
+  if (!isDetached && !shellAndEjectedAppsAreUnified) {
     await regexFileAsync(
       /host\.exp\.exponent\.permission\.C2D_MESSAGE/g,
       `${javaPackage}.permission.C2D_MESSAGE`,
@@ -566,7 +576,7 @@ export async function runShellAppModificationsAsync(
       )
     );
   }
-  if (isDetached) {
+  if (isDetached || shellAndEjectedAppsAreUnified) {
     await regexFileAsync(
       'IS_DETACHED = false',
       `IS_DETACHED = true`,
@@ -656,7 +666,7 @@ export async function runShellAppModificationsAsync(
     path.join(shellPath, 'app', 'src', 'main', 'AndroidManifest.xml')
   );
 
-  if (isDetached) {
+  if (isDetached || shellAndEjectedAppsAreUnified) {
     // Add LAUNCHER category to MainActivity
     await regexFileAsync(
       '<!-- ADD DETACH INTENT FILTERS HERE -->',
@@ -683,7 +693,7 @@ export async function runShellAppModificationsAsync(
   // Add app-specific intent filters
   const intentFilters = _.get(manifest, 'android.intentFilters');
   if (intentFilters) {
-    if (isDetached) {
+    if (isDetached || shellAndEjectedAppsAreUnified) {
       await regexFileAsync(
         '<!-- ADD DETACH APP SPECIFIC INTENT FILTERS -->',
         renderIntentFilters(intentFilters).join('\n'),
@@ -700,9 +710,10 @@ export async function runShellAppModificationsAsync(
 
   // Add shell app scheme
   if (scheme) {
-    const searchLine = isDetached
-      ? '<!-- ADD DETACH SCHEME HERE -->'
-      : '<!-- ADD SHELL SCHEME HERE -->';
+    const searchLine =
+      isDetached || shellAndEjectedAppsAreUnified
+        ? '<!-- ADD DETACH SCHEME HERE -->'
+        : '<!-- ADD SHELL SCHEME HERE -->';
     await regexFileAsync(
       searchLine,
       `<intent-filter>
