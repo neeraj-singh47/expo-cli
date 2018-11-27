@@ -487,7 +487,7 @@ export async function runShellAppModificationsAsync(
   );
 
   // Remove Exponent build script
-  if (!isDetached && !shellAndEjectedAppsAreUnified) {
+  if (!isDetached || shellAndEjectedAppsAreUnified) {
     await regexFileAsync(
       `preBuild.dependsOn generateDynamicMacros`,
       ``,
